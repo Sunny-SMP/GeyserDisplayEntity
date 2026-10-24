@@ -52,7 +52,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
     }
 
     public void setDisplayedItem(EntityMetadata<ItemStack, ?> entityMetadata) {
-        ItemStack stack = entityMetadata.getValue();
+        setDisplayedItem(entityMetadata.getValue());
+    }
+
+    protected void setDisplayedItem(ItemStack stack) {
         if (stack == null) {
             this.item = ItemData.AIR;
             setInvisible(true);
@@ -121,12 +124,12 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         ConfigManager cfg = GeyserDisplayEntity.getExtension().getConfigManager();
         boolean hiddenByType = cfg.getHideTypes().contains(javaID);
         boolean forceHiddenCustomType = cfg.getHideCustomTypes().contains(javaID);
-        boolean unmappedVanilla = cfg.isHideUnmappedVanilla() && !custom && !mappingApplied;
+        boolean unmappedVanilla = hidesUnmappedVanilla(cfg) && !custom && !mappingApplied;
 
         boolean hidden = (hiddenByType && !custom) || forceHiddenCustomType || unmappedVanilla;
 
         if (cfg.isLogDisplays()) {
-            GeyserDisplayEntity.getExtension().logger().info("ItemDisplay java=" + javaID
+            GeyserDisplayEntity.getExtension().logger().info(getClass().getSimpleName() + " java=" + javaID
                     + " bedrock=" + item.getDefinition().getIdentifier()
                     + " custom=" + custom + " mapped=" + mappingApplied
                     + " -> " + (hidden ? "HIDDEN" : "SHOWN"));
@@ -150,6 +153,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         }
 
         updateMainHand(session);
+    }
+
+    protected boolean hidesUnmappedVanilla(ConfigManager cfg) {
+        return cfg.isHideUnmappedVanilla();
     }
 
     private boolean applyLegacyModelData(ItemStack item, FileConfiguration mappingConfig) {

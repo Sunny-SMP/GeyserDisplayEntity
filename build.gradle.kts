@@ -1,26 +1,30 @@
 plugins {
     id("java")
-    id("com.gradleup.shadow") version "9.4.0"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
-group = "me.geyserextensionists"
+group = "net.sunnysmp"
 version = "1.0.14"
 
 repositories {
     mavenCentral()
 
+    maven("https://repo.sunnyinfra.cloud/development/") {
+        name = "SunnyInfra"
+        credentials(PasswordCredentials::class)
+    }
     maven("https://repo.opencollab.dev/main/")
 }
 
 dependencies {
-    compileOnly("org.geysermc.geyser:core:2.12.0-SNAPSHOT")
-    compileOnly("org.geysermc.geyser:api:2.12.0-SNAPSHOT")
+    compileOnly("net.sunnysmp.geyser:core:2.12.0-SNAPSHOT")
+    compileOnly("net.sunnysmp.geyser:api:2.12.0-SNAPSHOT")
 
     implementation("org.spongepowered:configurate-yaml:4.2.0-GeyserMC-SNAPSHOT")
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
 
 tasks.compileJava {

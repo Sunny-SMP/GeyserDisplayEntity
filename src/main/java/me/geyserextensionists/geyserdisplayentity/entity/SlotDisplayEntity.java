@@ -111,10 +111,17 @@ public class SlotDisplayEntity extends Entity {
     }
 
     protected void pushTranslationProperties() {
-        Vector3f t = this.translation.add(displayTranslation);
+        Vector3f t = this.translation.add(displayTranslation).add(modelOffset());
         propertyManager.addProperty(new FloatProperty(Identifier.of("geyser:t_x"), MAX_VALUE, MIN_VALUE, 0F), t.getX() * 10);
         propertyManager.addProperty(new FloatProperty(Identifier.of("geyser:t_y"), MAX_VALUE, MIN_VALUE, 0F), t.getY() * 10);
         propertyManager.addProperty(new FloatProperty(Identifier.of("geyser:t_z"), MAX_VALUE, MIN_VALUE, 0F), t.getZ() * 10);
+    }
+
+    /**
+     * Offset from the display's transformed origin to where the rendered model is centred.
+     */
+    protected Vector3f modelOffset() {
+        return Vector3f.ZERO;
     }
 
     protected void pushRotationProperties() {
