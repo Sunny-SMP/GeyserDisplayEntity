@@ -3,7 +3,6 @@ package me.geyserextensionists.geyserdisplayentity.managers;
 import me.geyserextensionists.geyserdisplayentity.GeyserDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.util.FileConfiguration;
 import me.geyserextensionists.geyserdisplayentity.util.FileUtils;
-import org.cloudburstmc.math.vector.Vector3f;
 import org.geysermc.geyser.api.util.Identifier;
 
 import java.io.File;
@@ -25,25 +24,7 @@ public class ConfigManager {
     private boolean showPlainVanillaBlocks = true;
     private boolean logDisplays = false;
 
-    private boolean heldBlocks = false;
-    private boolean forceHeldBlocks = false;
-    private float hideStretchedBelow = 0f;
-    private float hideResizedBeyond = 0f;
-    private BlockPose blockPose = BlockPose.DEFAULT;
-
-    /**
-     * Pose of the held block in the block rig, undoing Bedrock's in-hand block transform:
-     * rotation in degrees, position in pixels (1/16 block).
-     */
-    public record BlockPose(Vector3f rotation, Vector3f position, float scale) {
-        public static final BlockPose DEFAULT = new BlockPose(Vector3f.from(285.9f, 348f, 345f), Vector3f.from(-1.3f, -18.2f, 2.1f), 2.2f);
-
-        public String toYaml() {
-            return "rotation: [" + rotation.getX() + ", " + rotation.getY() + ", " + rotation.getZ() + "], "
-                    + "position: [" + position.getX() + ", " + position.getY() + ", " + position.getZ() + "], "
-                    + "scale: " + scale;
-        }
-    }
+    private boolean forceCube = false;
 
     public ConfigManager(GeyserDisplayEntity extension) {
         this.extension = extension;
@@ -62,12 +43,7 @@ public class ConfigManager {
         this.showPlainVanillaBlocks = !config.contains("show-plain-vanilla-blocks") || config.getBoolean("show-plain-vanilla-blocks");
         this.logDisplays = config.getBoolean("settings.debug.log-displays");
 
-        FileConfiguration blockDisplays = config.getConfigurationSection("block-displays");
-        this.heldBlocks = blockDisplays != null && blockDisplays.getBoolean("held-item");
-        this.forceHeldBlocks = blockDisplays != null && blockDisplays.getBoolean("force-held-item");
-        this.hideStretchedBelow = blockDisplays != null && blockDisplays.contains("hide-stretched-below") ? blockDisplays.getFloat("hide-stretched-below") : 0.34f;
-        this.hideResizedBeyond = blockDisplays != null && blockDisplays.contains("hide-resized-beyond") ? blockDisplays.getFloat("hide-resized-beyond") : 1.5f;
-        this.blockPose = readBlockPose(blockDisplays == null ? null : blockDisplays.getConfigurationSection("pose"));
+        this.forceCube = config.getBoolean("block-displays.force-cube");
 
         if (!Files.exists(GeyserDisplayEntity.getExtension().dataFolder().resolve("Entities"))) {
             FileUtils.createFiles(GeyserDisplayEntity.getExtension(), "Entities/item-displays.yml");
@@ -77,25 +53,6 @@ public class ConfigManager {
         if (!Files.exists(GeyserDisplayEntity.getExtension().dataFolder().resolve("Mappings"))) FileUtils.createFiles(GeyserDisplayEntity.getExtension(), "Mappings/example.yml");
 
         loadConfigMappings();
-    }
-
-    private static BlockPose readBlockPose(FileConfiguration pose) {
-        BlockPose fallback = BlockPose.DEFAULT;
-        if (pose == null) return fallback;
-
-        Vector3f rotation = readVec3(pose, "rotation");
-        Vector3f position = readVec3(pose, "position");
-        return new BlockPose(
-                rotation != null ? rotation : fallback.rotation(),
-                position != null ? position : fallback.position(),
-                pose.contains("scale") ? pose.getFloat("scale") : fallback.scale());
-    }
-
-    private static Vector3f readVec3(FileConfiguration cfg, String key) {
-        if (!cfg.contains(key)) return null;
-        List<Float> v = cfg.getFloatList(key);
-        if (v.size() < 3) return null;
-        return Vector3f.from(v.get(0), v.get(1), v.get(2));
     }
 
     private void loadEntityTypes() {
@@ -171,32 +128,8 @@ public class ConfigManager {
         return logDisplays;
     }
 
-    // Whether rotated or stretched blocks use the block rig; otherwise every block is a falling block
-    public boolean isHeldBlocks() {
-        return heldBlocks;
-    }
-
-    // Whether every block uses the block rig, even plain ones, to calibrate the pose
-    public boolean isForceHeldBlocks() {
-        return forceHeldBlocks;
-    }
-
-    // Falling blocks whose smallest scale axis is below this fraction of the largest are hidden; 0 hides none
-    public float getHideStretchedBelow() {
-        return hideStretchedBelow;
-    }
-
-    // Falling blocks are always one full block; displays more than this many times bigger or smaller are hidden; 0 hides none
-    public float getHideResizedBeyond() {
-        return hideResizedBeyond;
-    }
-
-    public BlockPose getBlockPose() {
-        return blockPose;
-    }
-
-    // Changed live by the pose command; the next /reload restores the config's pose
-    public void setBlockPose(BlockPose blockPose) {
-        this.blockPose = blockPose;
+    // Whether plain blocks use the block cube too, instead of a falling block
+    public boolean isForceCube() {
+        return forceCube;
     }
 }

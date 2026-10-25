@@ -1,6 +1,7 @@
 package me.geyserextensionists.geyserdisplayentity.entity;
 
 import me.geyserextensionists.geyserdisplayentity.managers.ConfigManager;
+import me.geyserextensionists.geyserdisplayentity.util.BlockShapes;
 import org.cloudburstmc.math.imaginary.Quaternionf;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
@@ -17,14 +18,14 @@ import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
 
 /**
  * A block display, drawn through {@link ItemDisplayEntity}'s block kinds: a falling block of the exact block state
- * when unrotated and evenly scaled, otherwise the block's item held by {@code geyser:block_display}.
+ * when unrotated and one block in size, otherwise the block cube of {@code geyser:block_display}.
  */
 public class BlockDisplayEntity extends ItemDisplayEntity {
 
     private static final Vector3f BLOCK_CENTER = Vector3f.from(0.5f, 0.5f, 0.5f);
 
     private BlockDefinition block;
-    private boolean hasItem;
+    private BlockShapes.Shape shape;
 
     // Bedrock spawn waits for the first metadata, so the entity is created as the right kind straight away
     private boolean metadataReceived;
@@ -60,12 +61,12 @@ public class BlockDisplayEntity extends ItemDisplayEntity {
         // Bedrock draws a falling block half a turn from the same block placed in the world, whatever the entity's
         // rotation, so send the state turned half a turn to cancel it out
         block = session.getBlockMappings().getBedrockBlock(halfTurn(state).javaId());
+        shape = BlockShapes.forState(javaId);
 
+        // The item only feeds the hide-types check; blocks without an item form (fire, water, ...) skip it
         Item item = state.block().asItem();
-        hasItem = item != Items.AIR;
-        setDisplayedItem(hasItem ? new ItemStack(item.javaId()) : null);
-        // Blocks without an item form (air, fire, water, ...) are always falling blocks, which draw the block themselves
-        if (!hasItem) setInvisible(false);
+        setDisplayedItem(item != Items.AIR ? new ItemStack(item.javaId()) : null);
+        setInvisible(false);
     }
 
     // Java's 180 degree block rotation: horizontal facings reverse, 16-step rotations move by 8, and
@@ -105,8 +106,19 @@ public class BlockDisplayEntity extends ItemDisplayEntity {
     }
 
     @Override
-    protected boolean hasHeldItem() {
-        return hasItem;
+    protected BlockShapes.Shape cubeShape() {
+        return shape;
+    }
+
+    // The block model fills the block from its corner, with no item transform
+    @Override
+    protected boolean centredModel() {
+        return false;
+    }
+
+    @Override
+    protected Vector3f cubeOrigin() {
+        return Vector3f.ZERO;
     }
 
     @Override

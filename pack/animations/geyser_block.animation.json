@@ -1,0 +1,48 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"animation.geyser_block": {
+			"loop": true,
+			"bones": {
+				"block_left": {
+					"position": [
+						"q.property('geyser:t_x')",
+						"q.property('geyser:t_y')",
+						"q.property('geyser:t_z')"
+					],
+					"rotation": [
+						"q.property('geyser:r_x')",
+						"q.property('geyser:r_y')",
+						"q.property('geyser:r_z')"
+					]
+				},
+				"block_scale": {
+					"scale": [
+						"q.property('geyser:s_x')",
+						"q.property('geyser:s_y')",
+						"q.property('geyser:s_z')"
+					]
+				},
+				"block_right": {
+					"rotation": [
+						"q.property('geyser:b_rrx')",
+						"q.property('geyser:b_rry')",
+						"q.property('geyser:b_rrz')"
+					]
+				},
+				"block_shape": {
+					"position": [
+						"(q.property('geyser:bx1') + q.property('geyser:bx2')) / 2",
+						"(q.property('geyser:by1') + q.property('geyser:by2')) / 2",
+						"-(q.property('geyser:bz1') + q.property('geyser:bz2')) / 2"
+					],
+					"scale": [
+						"(q.property('geyser:bx2') - q.property('geyser:bx1')) / 16",
+						"(q.property('geyser:by2') - q.property('geyser:by1')) / 16",
+						"(q.property('geyser:bz2') - q.property('geyser:bz1')) / 16"
+					]
+				}
+			}
+		}
+	}
+}

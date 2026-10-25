@@ -10,27 +10,13 @@ general:
   # Equip custom items (items with custom mapping) to hand
   hand: false
 
-# Blocks in displays: block displays, and item displays of unmapped vanilla block items. They're shown as Bedrock
-# falling blocks, which draw the exact block but always one full block in size and upright: a rotated display keeps
-# its position but stays upright, and displays a full block can't stand in for are hidden (see below).
+# Blocks in displays: block displays, and item displays of unmapped vanilla block items. Plain ones (unrotated, one
+# block in size) are shown as Bedrock falling blocks, which draw the exact block. Every other one is drawn by the
+# resource pack's block cube: the block's box (its biggest part, for blocks made of several) with its textures, at any
+# size, stretch and rotation.
 block-displays:
-  # Hide displays whose smallest scale axis is below this fraction of the largest (thin ropes, flat panels), instead
-  # of showing them as a full cube. 0 hides none.
-  hide-stretched-below: 0.34
-  # Hide displays more than this many times bigger or smaller than a block (average of their sides), instead of showing them as a
-  # full block. 0 hides none.
-  hide-resized-beyond: 1.5
-  # Experimental: show rotated or stretched blocks as the block's item held by a custom entity whose bones apply the
-  # full transform. Needs the pose below calibrated; fences, doors and other blocks with a flat item icon render flat.
-  held-item: false
-  # Show every block as a held item, even plain ones. Turn on to calibrate the pose against a placed block.
-  force-held-item: false
-  # Pose of the held block, undoing Bedrock's in-hand block transform: rotation in degrees, position in pixels
-  # (1/16 block). Tune it live with "/geyserdisplayentity pose", then copy the printed values here.
-  pose:
-    rotation: [285.9, 348, 345]
-    position: [-1.3, -18.2, 2.1]
-    scale: 2.2
+  # Draw plain blocks with the block cube too, instead of falling blocks
+  force-cube: false
 
 # Invisible item types
 hide-types:

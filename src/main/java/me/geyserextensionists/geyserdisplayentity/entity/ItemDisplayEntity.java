@@ -3,6 +3,7 @@ package me.geyserextensionists.geyserdisplayentity.entity;
 import me.geyserextensionists.geyserdisplayentity.GeyserDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.managers.ConfigManager;
 import me.geyserextensionists.geyserdisplayentity.type.DisplayType;
+import me.geyserextensionists.geyserdisplayentity.util.BlockShapes;
 import me.geyserextensionists.geyserdisplayentity.util.DeltaUtils;
 import me.geyserextensionists.geyserdisplayentity.util.FileConfiguration;
 import net.kyori.adventure.key.Key;
@@ -11,18 +12,21 @@ import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityLinkData;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
 import org.cloudburstmc.protocol.bedrock.packet.AddEntityPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MobArmorEquipmentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MobEquipmentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MoveEntityAbsolutePacket;
+import org.cloudburstmc.protocol.bedrock.packet.SetEntityLinkPacket;
 import org.geysermc.geyser.api.util.Identifier;
 import org.geysermc.geyser.entity.BedrockEntityDefinition;
 import org.geysermc.geyser.entity.VanillaEntities;
 import org.geysermc.geyser.entity.properties.type.FloatProperty;
 import org.geysermc.geyser.entity.properties.type.IntProperty;
 import org.geysermc.geyser.entity.spawn.EntitySpawnContext;
+import org.geysermc.geyser.entity.type.Entity;
 import org.geysermc.geyser.entity.vehicle.ClientVehicle;
 import org.geysermc.geyser.registry.type.ItemMapping;
 import org.geysermc.geyser.session.GeyserSession;
@@ -46,32 +50,28 @@ import static me.geyserextensionists.geyserdisplayentity.GeyserDisplayEntity.MIN
 public class ItemDisplayEntity extends SlotDisplayEntity {
 
     /**
-     * How the display is drawn on Bedrock. Custom and mapped items use the original item rig. Vanilla blocks use a
-     * falling block, which is always one full, upright block; displays it can't show (resized or stretched) are
-     * hidden. With "block-displays.held-item" on, rotated or stretched ones use the block rig instead, whose bones
-     * apply the full Java transform to a held block.
+     * How the display is drawn on Bedrock. Custom and mapped items use the original item rig. Vanilla blocks that are
+     * plain (unrotated, one block in size) are falling blocks, which draw the exact block. Every other block is drawn
+     * by the resource pack's block cube, whose bones apply the full Java transform to the block's box and textures.
      */
-    protected enum Kind { ITEM_RIG, BLOCK_RIG, FALLING_BLOCK, HIDDEN }
+    protected enum Kind { ITEM_RIG, BLOCK_CUBE, FALLING_BLOCK, HIDDEN }
 
     // Bedrock entity models face the opposite way to Java's world axes at yaw 0
     private static final Quaternionf MODEL_SPACE = Quaternionf.fromAngleDegAxis(180f, 0f, 1f, 0f);
     private static final Quaternionf HALF_TURN = Quaternionf.fromAngleDegAxis(180f, 0f, 1f, 0f);
 
-    // Right rotation of the block rig; translation, left rotation and scale reuse geyser:t_*, geyser:r_* and geyser:s_*
+    // Right rotation of the block cube; translation, left rotation and scale reuse geyser:t_*, geyser:r_* and geyser:s_*
     public static final String RIGHT_ROTATION_X = "geyser:b_rrx";
     public static final String RIGHT_ROTATION_Y = "geyser:b_rry";
     public static final String RIGHT_ROTATION_Z = "geyser:b_rrz";
 
-    // Pose of the held block (rightitem bone) that undoes Bedrock's in-hand block transform, from ConfigManager#getBlockPose
-    public static final String POSE_ROTATION_X = "geyser:b_rx";
-    public static final String POSE_ROTATION_Y = "geyser:b_ry";
-    public static final String POSE_ROTATION_Z = "geyser:b_rz";
-    public static final String POSE_POSITION_X = "geyser:b_px";
-    public static final String POSE_POSITION_Y = "geyser:b_py";
-    public static final String POSE_POSITION_Z = "geyser:b_pz";
-    public static final String POSE_SCALE = "geyser:b_s";
+    // The block's box in pixels, and the texture index per face (north, south, east, west, up, down; -1 draws none)
+    public static final String[] BOX = {"geyser:bx1", "geyser:by1", "geyser:bz1", "geyser:bx2", "geyser:by2", "geyser:bz2"};
+    public static final String[] FACES = {"geyser:bf_n", "geyser:bf_s", "geyser:bf_e", "geyser:bf_w", "geyser:bf_u", "geyser:bf_d"};
+    // 1: translucent textures (blend instead of cutout); 2: the box is centred on the origin (item models)
+    public static final String FLAGS = "geyser:b_flags";
 
-    // Switches geyser:item_display between the item rig (0) and the block rig (1)
+    // Switches geyser:item_display between the item rig (0) and the block cube (1)
     public static final String BLOCK_MODE = "geyser:b_mode";
 
     private DisplayType displayType = DisplayType.NONE;
@@ -80,6 +80,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
     private boolean needHide = false;
     private boolean mappingApplied = false;
     private BlockDefinition itemBlock;
+    private BlockShapes.Shape itemShape;
 
     protected Kind kind;
     private BedrockEntityDefinition rigDefinition;
@@ -113,6 +114,44 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         super.spawnEntity();
         moveAbsoluteRaw(position, yaw, pitch, headYaw, onGround, true);
         if (kind != Kind.FALLING_BLOCK) updateMainHand(session);
+        relink();
+    }
+
+    /**
+     * Re-sends the links to this display's vehicle and passengers. Bedrock drops them when either side is removed,
+     * which a respawn as another kind does, and a link sent before a block display's deferred spawn never arrives.
+     */
+    private void relink() {
+        if (vehicle != null && vehicle.isValid()) link(vehicle, this);
+        for (Entity passenger : passengers) {
+            if (passenger == null || !passenger.isValid()) continue;
+            link(this, passenger);
+            if (passenger instanceof ItemDisplayEntity display) display.updateSeat();
+        }
+    }
+
+    private void link(Entity mount, Entity rider) {
+        boolean first = !mount.getPassengers().isEmpty() && mount.getPassengers().get(0) == rider;
+        SetEntityLinkPacket linkPacket = new SetEntityLinkPacket();
+        linkPacket.setEntityLink(new EntityLinkData(mount.geyserId(), rider.geyserId(),
+                first ? EntityLinkData.Type.RIDER : EntityLinkData.Type.PASSENGER, false, false, 0f));
+        session.sendUpstreamPacket(linkPacket);
+    }
+
+    // Geyser seats a rider above the vehicle's hitbox, but Java draws a display riding another display right at the
+    // vehicle's position. Bedrock puts a rider at its vehicle's position plus this offset
+    @Override
+    public void setRiderSeatPosition(Vector3f position) {
+        if (vehicle instanceof SlotDisplayEntity) {
+            position = vehicle.getPosition().add(bedrockPosition().sub(this.position)).sub(vehicle.bedrockPosition());
+        }
+        super.setRiderSeatPosition(position);
+    }
+
+    private void updateSeat() {
+        if (!(vehicle instanceof SlotDisplayEntity)) return;
+        setRiderSeatPosition(Vector3f.ZERO);
+        super.updateBedrockMetadata();
     }
 
     protected void respawn() {
@@ -129,10 +168,15 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
 
         if (kind == Kind.FALLING_BLOCK || kind == Kind.HIDDEN) {
             dropProperties();
-        } else if (kind == Kind.BLOCK_RIG) {
-            pushBlockTransform();
+        } else if (kind == Kind.BLOCK_CUBE) {
+            pushCube();
         }
+        // The seat depends on where both this display and its vehicle are drawn
+        if (vehicle instanceof SlotDisplayEntity) setRiderSeatPosition(Vector3f.ZERO);
         super.updateBedrockMetadata();
+        for (Entity passenger : passengers) {
+            if (passenger instanceof ItemDisplayEntity display && display.isValid()) display.updateSeat();
+        }
     }
 
     @Override
@@ -153,8 +197,8 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
             respawn();
             return;
         }
-        if (kind == Kind.BLOCK_RIG) {
-            pushPoseProperties();
+        if (kind == Kind.BLOCK_CUBE) {
+            pushCube();
             updateBedrockEntityProperties();
         }
     }
@@ -163,14 +207,28 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
      * Whether this display shows a vanilla block rather than an item.
      */
     protected boolean showsBlock() {
-        return itemBlock != null && !custom && !mappingApplied;
+        return (itemBlock != null || itemShape != null) && !custom && !mappingApplied;
     }
 
     /**
-     * Whether there is an item to hold; a block display without an item form can only be a falling block.
+     * The box and textures the block cube draws, or null if this block can't be drawn by it.
      */
-    protected boolean hasHeldItem() {
+    protected BlockShapes.Shape cubeShape() {
+        return itemShape;
+    }
+
+    /**
+     * Whether the cube's box is centred on the display (item models) rather than starting at its corner (blocks).
+     */
+    protected boolean centredModel() {
         return true;
+    }
+
+    /**
+     * Where the model's origin sits in the display's transformed space, before the right rotation.
+     */
+    protected Vector3f cubeOrigin() {
+        return modelOrigin();
     }
 
     protected BlockDefinition fallingBlockDefinition() {
@@ -179,38 +237,18 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
 
     private Kind wantedKind() {
         if (!showsBlock()) return Kind.ITEM_RIG;
-        if (!hasHeldItem()) return fallingBlockOrHidden();
-
-        ConfigManager cfg = GeyserDisplayEntity.getExtension().getConfigManager();
-        if (cfg.isForceHeldBlocks()) return Kind.BLOCK_RIG;
-        if (!cfg.isHeldBlocks()) return fallingBlockOrHidden();
-
-        boolean uniformScale = Math.abs(javaScale.getX() - javaScale.getY()) < 1e-4f
-                && Math.abs(javaScale.getY() - javaScale.getZ()) < 1e-4f;
-        Quaternionf rotation = orientation().mul(javaLeftRotation).mul(javaRightRotation).mul(fallingRotation()).normalize();
-        return uniformScale && Math.abs(rotation.getW()) > 0.99999f ? fallingBlockOrHidden() : Kind.BLOCK_RIG;
-    }
-
-    /**
-     * Bedrock always draws a falling block one full block in size, whatever the entity's scale, so displays too far
-     * from that (a thin rope, a flat panel, a tiny block) are hidden instead of shown as a wrong-sized cube.
-     */
-    private Kind fallingBlockOrHidden() {
         if (needHide) return Kind.HIDDEN;
 
-        ConfigManager cfg = GeyserDisplayEntity.getExtension().getConfigManager();
+        // A falling block draws the exact block (stairs, fences, ...), but only one full block in size and upright
         Vector3f size = javaScale.mul(modelScale());
-        float min = Math.min(size.getX(), Math.min(size.getY(), size.getZ()));
-        float max = Math.max(size.getX(), Math.max(size.getY(), size.getZ()));
+        boolean fullSize = Math.abs(size.getX() - 1) < 1e-3f && Math.abs(size.getY() - 1) < 1e-3f && Math.abs(size.getZ() - 1) < 1e-3f;
+        Quaternionf rotation = orientation().mul(javaLeftRotation).mul(javaRightRotation).mul(fallingRotation()).normalize();
+        boolean plain = fullSize && Math.abs(rotation.getW()) > 0.99999f && fallingBlockDefinition() != null;
+        if (plain && !GeyserDisplayEntity.getExtension().getConfigManager().isForceCube()) return Kind.FALLING_BLOCK;
 
-        float stretchLimit = cfg.getHideStretchedBelow();
-        if (stretchLimit > 0 && (max <= 0 || min / max < stretchLimit)) return Kind.HIDDEN;
-
-        float resizeLimit = cfg.getHideResizedBeyond();
-        float even = evenScale() * modelScale();
-        if (resizeLimit > 0 && (even > resizeLimit || even < 1 / resizeLimit)) return Kind.HIDDEN;
-
-        return Kind.FALLING_BLOCK;
+        if (cubeShape() != null) return Kind.BLOCK_CUBE;
+        // Blocks without a model box (chests, signs, ...) can only be shown plain
+        return plain ? Kind.FALLING_BLOCK : Kind.HIDDEN;
     }
 
     private void applyKind() {
@@ -228,16 +266,16 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
                 dropProperties();
             }
             case HIDDEN -> dropProperties();
-            case BLOCK_RIG -> {
+            case BLOCK_CUBE -> {
                 bedrockDefinition(rigDefinition);
-                metadata.put(EntityDataTypes.SCALE, needHide ? 0f : 1f);
-                if (itemDisplay) propertyManager.addProperty(new IntProperty(Identifier.of(BLOCK_MODE), 1, 0, 0), 1);
-                pushPoseProperties();
-                pushBlockTransform();
+                setFlag(EntityFlag.INVISIBLE, false);
+                metadata.put(EntityDataTypes.SCALE, 1f);
+                if (itemDisplay) setInt(BLOCK_MODE, 1);
+                pushCube();
             }
             case ITEM_RIG -> {
                 bedrockDefinition(rigDefinition);
-                if (itemDisplay) propertyManager.addProperty(new IntProperty(Identifier.of(BLOCK_MODE), 1, 0, 0), 0);
+                if (itemDisplay) setInt(BLOCK_MODE, 0);
                 // Rebuild the item rig from the latest Java transform. A respawned entity only gets the properties
                 // sent with it, so send all of them rather than just the ones Java changed
                 if (translationMetadata != null) super.setTranslation(translationMetadata);
@@ -309,11 +347,6 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         if (kind == Kind.ITEM_RIG) super.setRightRotation(entityMetadata);
     }
 
-    // The display's size as one even scale; the geometric mean keeps its volume
-    private float evenScale() {
-        return (float) Math.cbrt(Math.abs(javaScale.getX() * javaScale.getY() * javaScale.getZ()));
-    }
-
     // Java's FIXED billboard orientation: rotationYXZ(-yaw, pitch, 0)
     private Quaternionf orientation() {
         return Quaternionf.fromAngleDegAxis(-getYaw(), 0f, 1f, 0f).mul(Quaternionf.fromAngleDegAxis(getPitch(), 1f, 0f, 0f));
@@ -377,17 +410,22 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
     }
 
     /**
-     * Sends the Java transform to the block rig. The block centre goes to the outer bone's position and the
-     * entity's own yaw and pitch are folded into the left rotation, so the Bedrock entity itself is never rotated.
+     * Sends the Java transform and the block's shape to the block cube. Java draws a point m of the model at
+     * orientation * (translation + leftRotation * scale * rightRotation * (origin + modelRotation * modelScale * m)).
+     * The bones apply position, leftRotation, scale, rightRotation and the box in that order; the entity's own yaw and
+     * pitch are folded into the left rotation, so the Bedrock entity itself is never rotated.
      */
-    private void pushBlockTransform() {
-        Vector3f center = blockCenter();
-        // Bedrock animation positions are in pixels, with Z flipped against Java's world axes
-        setFloat("geyser:t_x", center.getX() * 16);
-        setFloat("geyser:t_y", center.getY() * 16);
-        setFloat("geyser:t_z", -center.getZ() * 16);
+    private void pushCube() {
+        BlockShapes.Shape shape = cubeShape();
+        if (shape == null) return;
 
-        // Bones apply position * leftRotation * scale * rightRotation to the held block, which is centred on the inner bone
+        Vector3f origin = javaLeftRotation.rotate(javaRightRotation.rotate(cubeOrigin()).mul(javaScale));
+        Vector3f position = orientation().rotate(javaTranslation.add(origin));
+        // Bedrock animation positions are in pixels, with Z flipped against Java's world axes
+        setFloat("geyser:t_x", position.getX() * 16);
+        setFloat("geyser:t_y", position.getY() * 16);
+        setFloat("geyser:t_z", -position.getZ() * 16);
+
         Vector3f left = toBedrockEuler(orientation().mul(javaLeftRotation));
         setFloat("geyser:r_x", left.getX());
         setFloat("geyser:r_y", left.getY());
@@ -402,6 +440,15 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         setFloat(RIGHT_ROTATION_X, right.getX());
         setFloat(RIGHT_ROTATION_Y, right.getY());
         setFloat(RIGHT_ROTATION_Z, right.getZ());
+
+        // Item models are centred on the display, blocks start at its corner
+        float offset = centredModel() ? 8 : 0;
+        for (int i = 0; i < 3; i++) {
+            setFloat(BOX[i], shape.from()[i] - offset);
+            setFloat(BOX[i + 3], shape.to()[i] - offset);
+        }
+        for (int i = 0; i < 6; i++) setInt(FACES[i], shape.faces()[i]);
+        setInt(FLAGS, (shape.translucent() ? 1 : 0) | (centredModel() ? 2 : 0));
     }
 
     // Bedrock bones rotate Z * Y * X in model space, with the X and Y angles negated
@@ -411,20 +458,12 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         return Vector3f.from(-euler.getX(), -euler.getY(), euler.getZ());
     }
 
-    private void pushPoseProperties() {
-        ConfigManager.BlockPose pose = GeyserDisplayEntity.getExtension().getConfigManager().getBlockPose();
-
-        setFloat(POSE_ROTATION_X, pose.rotation().getX());
-        setFloat(POSE_ROTATION_Y, pose.rotation().getY());
-        setFloat(POSE_ROTATION_Z, pose.rotation().getZ());
-        setFloat(POSE_POSITION_X, pose.position().getX());
-        setFloat(POSE_POSITION_Y, pose.position().getY());
-        setFloat(POSE_POSITION_Z, pose.position().getZ());
-        setFloat(POSE_SCALE, pose.scale());
-    }
-
     private void setFloat(String id, float value) {
         propertyManager.addProperty(new FloatProperty(Identifier.of(id), MAX_VALUE, MIN_VALUE, 0F), value);
+    }
+
+    private void setInt(String id, int value) {
+        propertyManager.addProperty(new IntProperty(Identifier.of(id), MAX_VALUE, MIN_VALUE, 0), value);
     }
 
     // The block kinds own all translation; the item rig's offsets don't apply to them
@@ -439,7 +478,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         // Called from the super constructor, before field initializers have run
         if (javaTranslation == null || javaScale == null || javaLeftRotation == null || javaRightRotation == null) return super.bedrockPosition();
 
-        if (kind == Kind.BLOCK_RIG) return position;
+        if (kind == Kind.BLOCK_CUBE) return position;
         if (kind == Kind.FALLING_BLOCK) {
             // Bedrock draws a falling block one full block in size, from its bottom centre
             return position.add(blockCenter()).sub(0, 0.5f, 0);
@@ -457,6 +496,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         if (stack == null) {
             this.item = ItemData.AIR;
             this.itemBlock = null;
+            this.itemShape = null;
             setInvisible(true);
             return;
         }
@@ -523,6 +563,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         ItemMapping itemMapping = session.getItemMappings().getMapping(stack);
         this.itemBlock = itemMapping.isBlock() ? itemMapping.getBedrockBlockDefinition() : null;
         String javaID = itemMapping.getJavaItem().javaKey().asString();
+        this.itemShape = BlockShapes.forItem(javaID);
         boolean wasHiddenByType = needHide;
 
         ConfigManager cfg = GeyserDisplayEntity.getExtension().getConfigManager();
@@ -649,7 +690,8 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
 
     @Override
     public void updateMainHand(GeyserSession session) {
-        if (!valid || kind == Kind.FALLING_BLOCK) return;
+        // Falling blocks and the block cube draw the block themselves
+        if (!valid || kind == Kind.FALLING_BLOCK || kind == Kind.BLOCK_CUBE) return;
 
         ItemData helmet = ItemData.AIR; // TODO
         ItemData chest = item;

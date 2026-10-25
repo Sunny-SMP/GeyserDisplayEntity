@@ -4,6 +4,7 @@ import me.geyserextensionists.geyserdisplayentity.entity.BlockDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.ItemDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.SlotDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.managers.ConfigManager;
+import me.geyserextensionists.geyserdisplayentity.util.BlockShapes;
 import me.geyserextensionists.geyserdisplayentity.util.EntityUtils;
 import me.geyserextensionists.geyserdisplayentity.util.FileConfiguration;
 import org.geysermc.event.subscribe.Subscribe;
@@ -15,7 +16,6 @@ import org.geysermc.geyser.api.event.lifecycle.GeyserDefineEntitiesEvent;
 import org.geysermc.geyser.api.event.lifecycle.GeyserDefineEntityPropertiesEvent;
 import org.geysermc.geyser.api.event.lifecycle.GeyserPreInitializeEvent;
 import org.geysermc.geyser.api.extension.Extension;
-import org.cloudburstmc.math.vector.Vector3f;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.api.util.Identifier;
 import org.geysermc.geyser.entity.*;
@@ -24,8 +24,8 @@ import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataTypes;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 
+import java.io.IOException;
 import java.util.Collection;
-import java.util.Locale;
 
 public class GeyserDisplayEntity implements Extension {
 
@@ -46,6 +46,12 @@ public class GeyserDisplayEntity implements Extension {
     public void onLoad(GeyserPreInitializeEvent event) {
         extension = this;
         loadManagers();
+
+        try {
+            BlockShapes.load(getClass().getClassLoader());
+        } catch (IOException err) {
+            logger().error("Couldn't load the block renderer's shapes; block displays fall back to falling blocks", err);
+        }
     }
 
     @Subscribe
@@ -131,69 +137,6 @@ public class GeyserDisplayEntity implements Extension {
                     source.sendMessage(configManager.getLang().getString("commands.geyserdisplayentity.reload.successfully-reloaded"));
                 })
                 .build());
-
-        event.register(Command.builder(this)
-                .name("pose")
-                .source(CommandSource.class)
-                .playerOnly(false)
-                .description("Adjust the held block pose live, to calibrate it against a placed block")
-                .permission("geyserdisplayentity.commands.pose")
-                .executor((source, command, args) -> {
-                    String error = adjustBlockPose(args);
-                    if (error != null) {
-                        source.sendMessage(error);
-                        source.sendMessage("Usage: pose [rotate <x|y|z> <degrees> | move <x|y|z> <pixels> | scale <value> | reset]");
-                    }
-                    source.sendMessage("Block pose: " + configManager.getBlockPose().toYaml());
-                })
-                .build());
-    }
-
-    // Applies a pose command to the live pose and pushes it to displays in view; returns an error message, or null
-    private String adjustBlockPose(String[] args) {
-        if (args.length == 0) return null;
-
-        ConfigManager.BlockPose pose = configManager.getBlockPose();
-        try {
-            switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "rotate" -> {
-                    if (args.length < 3) return "rotate needs an axis and an amount";
-                    pose = new ConfigManager.BlockPose(addOnAxis(pose.rotation(), args[1], Float.parseFloat(args[2])), pose.position(), pose.scale());
-                }
-                case "move" -> {
-                    if (args.length < 3) return "move needs an axis and an amount";
-                    pose = new ConfigManager.BlockPose(pose.rotation(), addOnAxis(pose.position(), args[1], Float.parseFloat(args[2])), pose.scale());
-                }
-                case "scale" -> {
-                    if (args.length < 2) return "scale needs a value";
-                    pose = new ConfigManager.BlockPose(pose.rotation(), pose.position(), Float.parseFloat(args[1]));
-                }
-                case "reset" -> {
-                    configManager.load();
-                    pose = configManager.getBlockPose();
-                }
-                default -> {
-                    return "Unknown pose action: " + args[0];
-                }
-            }
-        } catch (NumberFormatException e) {
-            return "Not a number: " + e.getMessage();
-        } catch (IllegalArgumentException e) {
-            return e.getMessage();
-        }
-
-        configManager.setBlockPose(pose);
-        refreshDisplays();
-        return null;
-    }
-
-    private static Vector3f addOnAxis(Vector3f vector, String axis, float amount) {
-        return switch (axis.toLowerCase(Locale.ROOT)) {
-            case "x" -> vector.add(amount, 0, 0);
-            case "y" -> vector.add(0, amount, 0);
-            case "z" -> vector.add(0, 0, amount);
-            default -> throw new IllegalArgumentException("Axis must be x, y or z, not " + axis);
-        };
     }
 
     private void registerDisplayProperties(GeyserDefineEntityPropertiesEvent event, Identifier entityIdentifier) {
@@ -214,28 +157,25 @@ public class GeyserDisplayEntity implements Extension {
         }
     }
 
-    // Properties of the block rig, which draws vanilla blocks with the full Java transform. Registered in code
-    // rather than the Entities/*.yml files, which existing installs never re-copy
+    // Properties of the block cube, which draws vanilla blocks with the full Java transform. Registered in code
+    // rather than the Entities/*.yml files, which existing installs never re-copy. Bedrock allows 32 per entity:
+    // these come to 29 on block displays and 30 on item displays with the yml ones
     private void registerBlockRigProperties(GeyserDefineEntityPropertiesEvent event, Identifier entityIdentifier) {
         Collection<GeyserEntityProperty<?>> existing = event.properties(entityIdentifier);
 
-        // Only item displays switch between the item rig and the block rig
+        // Only item displays switch between the item rig and the block cube
         if (entityIdentifier.equals(Identifier.of("geyser:item_display"))) {
             EntityUtils.registerInteger(event, existing, entityIdentifier, ItemDisplayEntity.BLOCK_MODE, 0, 1, 0);
         }
         EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.RIGHT_ROTATION_X, MIN_VALUE, MAX_VALUE, 0F);
         EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.RIGHT_ROTATION_Y, MIN_VALUE, MAX_VALUE, 0F);
         EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.RIGHT_ROTATION_Z, MIN_VALUE, MAX_VALUE, 0F);
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_ROTATION_X, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.rotation().getX());
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_ROTATION_Y, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.rotation().getY());
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_ROTATION_Z, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.rotation().getZ());
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_POSITION_X, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.position().getX());
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_POSITION_Y, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.position().getY());
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_POSITION_Z, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.position().getZ());
-        EntityUtils.registerFloat(event, existing, entityIdentifier, ItemDisplayEntity.POSE_SCALE, MIN_VALUE, MAX_VALUE, ConfigManager.BlockPose.DEFAULT.scale());
+        for (String box : ItemDisplayEntity.BOX) EntityUtils.registerFloat(event, existing, entityIdentifier, box, MIN_VALUE, MAX_VALUE, 0F);
+        for (String face : ItemDisplayEntity.FACES) EntityUtils.registerInteger(event, existing, entityIdentifier, face, -1, MAX_VALUE, -1);
+        EntityUtils.registerInteger(event, existing, entityIdentifier, ItemDisplayEntity.FLAGS, 0, 3, 0);
     }
 
-    // Apply the reloaded settings to displays already in view, so the block pose can be tuned in-game
+    // Apply the reloaded settings to displays already in view
     private void refreshDisplays() {
         for (GeyserSession session : GeyserImpl.getInstance().getSessionManager().getAllSessions()) {
             session.executeInEventLoop(() -> {

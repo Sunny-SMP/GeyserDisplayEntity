@@ -1,0 +1,100 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"animation.display.interpolate": {
+			"loop": true,
+			"bones": {
+				"geyser": {
+					"position": [
+						"math.lerp(v.translation.x, q.property('geyser:t_x'), v.interpolation_state)",
+						"math.lerp(v.translation.y, q.property('geyser:t_y'), v.interpolation_state)",
+						"math.lerp(v.translation.z, q.property('geyser:t_z'), v.interpolation_state)"
+					],
+					"scale": [
+						"math.lerp(v.scale.x, q.property('geyser:s_x'), v.interpolation_state)",
+						"math.lerp(v.scale.y, q.property('geyser:s_y'), v.interpolation_state)",
+						"math.lerp(v.scale.z, q.property('geyser:s_z'), v.interpolation_state)"
+					]
+				},
+				"geyser_x": {
+					"rotation": [
+						"math.lerprotate(v.rotation.x, q.property('geyser:r_x'), v.interpolation_state)",
+						0,
+						0
+					]
+				},
+				"geyser_y": {
+					"rotation": [
+						0,
+						"math.lerprotate(v.rotation.y, q.property('geyser:r_y'), v.interpolation_state)",
+						0
+					]
+				},
+				"geyser_z": {
+					"rotation": [
+						0,
+						0,
+						"math.lerprotate(v.rotation.z, q.property('geyser:r_z'), v.interpolation_state)"
+					]
+				}
+			}
+		},
+		"animation.display.stable": {
+			"loop": true,
+			"bones": {
+				"geyser": {
+					"position": [
+						"q.property('geyser:t_x')",
+						"q.property('geyser:t_y')",
+						"q.property('geyser:t_z')"
+					],
+					"scale": [
+						"q.property('geyser:s_x')",
+						"q.property('geyser:s_y')",
+						"q.property('geyser:s_z')"
+					]
+				},
+				"geyser_x": {
+					"rotation": [
+						"q.property('geyser:r_x')",
+						0,
+						0
+					]
+				},
+				"geyser_y": {
+					"rotation": [
+						0,
+						"q.property('geyser:r_y')",
+						0
+					]
+				},
+				"geyser_z": {
+					"rotation": [
+						0,
+						0,
+						"q.property('geyser:r_z')"
+					]
+				}
+			}
+		},
+		"animation.display.debug": {
+			"loop": true,
+			"animation_length": 1.125,
+			"bones": {
+				"rightitem": {
+					"rotation": [
+						285.9,
+						348,
+						345
+					],
+					"position": [
+						-1.3,
+						-18.2,
+						2.1
+					],
+					"scale": 1.65
+				}
+			}
+		}
+	}
+}

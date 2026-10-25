@@ -125,3 +125,6 @@ runs/
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 **/.kotlin
+
+# Block renderer textures, generated from the vanilla client by tools/block_renderer/generate.py
+/pack/textures/geyser_display/
