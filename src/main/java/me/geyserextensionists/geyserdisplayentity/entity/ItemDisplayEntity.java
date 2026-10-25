@@ -5,6 +5,7 @@ import me.geyserextensionists.geyserdisplayentity.managers.ConfigManager;
 import me.geyserextensionists.geyserdisplayentity.type.DisplayType;
 import me.geyserextensionists.geyserdisplayentity.util.DeltaUtils;
 import me.geyserextensionists.geyserdisplayentity.util.FileConfiguration;
+import net.kyori.adventure.key.Key;
 import org.cloudburstmc.math.imaginary.Quaternionf;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
@@ -490,7 +491,9 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
                 if (!mappingConfig.getString("type").equals(type)) continue;
 
                 boolean applied;
-                if (mappingConfig.contains("model-data")) {
+                if (mappingConfig.contains("item-model")) {
+                    applied = applyJavaItemModel(stack, mappingConfig);
+                } else if (mappingConfig.contains("model-data")) {
                     applied = applyLegacyModelData(stack, mappingConfig);
                 } else {
                     applied = applyModernItemModels(item, mappingConfig);
@@ -575,6 +578,16 @@ public class ItemDisplayEntity extends SlotDisplayEntity {
         if (Math.abs(mappingConfig.getInt("model-data") - modelData.floats().get(0)) < 0.5) return entityApplyDisplayConfig(mappingConfig);
 
         return false;
+    }
+
+    // Matches the Java item_model component, which stays the same across Bedrock pack rebuilds unlike the
+    // generated Bedrock identifier
+    private boolean applyJavaItemModel(ItemStack item, FileConfiguration mappingConfig) {
+        DataComponents components = item.getDataComponentsPatch();
+        Key itemModel = components == null ? null : components.get(DataComponentTypes.ITEM_MODEL);
+        if (itemModel == null || !itemModel.asString().equals(mappingConfig.getString("item-model"))) return false;
+
+        return entityApplyDisplayConfig(mappingConfig);
     }
 
     private boolean applyModernItemModels(ItemData itemData, FileConfiguration mappingConfig) {

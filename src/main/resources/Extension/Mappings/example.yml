@@ -5,6 +5,9 @@
 # item-identifier: "none" - this takes the geyser mapping name e.g
 # - "bedrock_identifier": "geyser_custom:minecraft_field_windmill_still, only use minecraft_field_windmill_still"
 
+# Java item model format (stays the same when the Bedrock pack is rebuilt):
+# item-model: "namespace:path" - the item's minecraft:item_model component
+
 mappings:
   example:
     # Item type

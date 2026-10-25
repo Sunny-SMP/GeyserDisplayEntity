@@ -28,10 +28,14 @@ Bedrock tilts and shrinks a held block in a fixed way, and `block-displays.pose`
 
 Each change applies to displays in view straight away and prints the pose to copy into `config.yml`. The Bedrock entity is respawned when a change moves a display between the falling block and the block rig, and block displays wait for their first metadata before spawning.
 
+### Mappings
+- A mapping can match the Java `item_model` component with `item-model: "namespace:path"`. Unlike `item-identifier`, it stays the same when the Bedrock pack is rebuilt and the converter generates new Bedrock identifiers.
+
 ### Resource pack
 - `geyser:block_display` has its own geometry (`geometry.block_display`) and animation (`animation.display.block`), driven by the `geyser:t_*`, `geyser:r_*`, `geyser:s_*` and `geyser:b_*` properties.
 - `geyser:item_display` switches to the same geometry and animation when `geyser:b_mode` is 1, through the new `controller.render.item_display`.
-- Pack version is 1.4.1.
+- `geometry.display` has a `body` bone at the end of the rig, so chest-slot attachables (custom items on item displays) get the display's translation, rotation and scale instead of hanging off the entity's root.
+- Pack version is 1.4.2.
 
 ### Build
 - Compiles against `net.sunnysmp.geyser:core` / `api` (SunnySMP's Geyser fork) from the SunnyInfra repository instead of `org.geysermc.geyser`.
