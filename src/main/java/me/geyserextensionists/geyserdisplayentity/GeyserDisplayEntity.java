@@ -1,10 +1,12 @@
 package me.geyserextensionists.geyserdisplayentity;
 
 import me.geyserextensionists.geyserdisplayentity.entity.BlockDisplayEntity;
+import me.geyserextensionists.geyserdisplayentity.entity.FurnitureFrameEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.ItemDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.SlotDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.managers.ConfigManager;
 import me.geyserextensionists.geyserdisplayentity.util.BlockShapes;
+import me.geyserextensionists.geyserdisplayentity.util.DisplayTransforms;
 import me.geyserextensionists.geyserdisplayentity.util.EntityUtils;
 import me.geyserextensionists.geyserdisplayentity.util.FileConfiguration;
 import org.geysermc.event.subscribe.Subscribe;
@@ -25,6 +27,8 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataTyp
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collection;
 
 public class GeyserDisplayEntity implements Extension {
@@ -51,6 +55,20 @@ public class GeyserDisplayEntity implements Extension {
             BlockShapes.load(getClass().getClassLoader());
         } catch (IOException err) {
             logger().error("Couldn't load the block renderer's shapes; block displays fall back to falling blocks", err);
+        }
+        loadDisplayTransforms();
+    }
+
+    // Written by the Bedrock converter next to the item mappings; copy it into the extension's folder
+    private void loadDisplayTransforms() {
+        try {
+            Path file = dataFolder().resolve("display_transforms.json");
+            DisplayTransforms.load(file);
+            logger().info(Files.exists(file)
+                    ? "Loaded " + DisplayTransforms.size() + " item display transforms for furniture in item frames"
+                    : "No display_transforms.json in " + dataFolder() + "; furniture in item frames shows as Geyser frames");
+        } catch (IOException err) {
+            logger().error("Couldn't load display_transforms.json; furniture in item frames shows as Geyser frames", err);
         }
     }
 
@@ -116,6 +134,21 @@ public class GeyserDisplayEntity implements Extension {
 
             EntityUtils.replaceJavaDefinition(EntityType.BLOCK_DISPLAY, BLOCK_DISPLAY);
             EntityUtils.replaceJavaDefinition(EntityType.ITEM_DISPLAY, ITEM_DISPLAY);
+
+            // Item frames keep Geyser's behaviour, except invisible ones holding furniture, which draw its model
+            EntityUtils.replaceJavaDefinition(EntityType.ITEM_FRAME, VanillaEntityType.inherited(FurnitureFrameEntity::new, VanillaEntities.ITEM_FRAME)
+                    .type(EntityType.ITEM_FRAME)
+                    // Geyser has already registered item frames; build(false) skips its registries and
+                    // replaceJavaDefinition swaps this one in
+                    .bedrockDefinition(VanillaEntities.ITEM_FRAME.defaultBedrockDefinition())
+                    .build(false));
+            EntityUtils.replaceJavaDefinition(EntityType.GLOW_ITEM_FRAME, VanillaEntityType.inherited(FurnitureFrameEntity::new, VanillaEntities.GLOW_ITEM_FRAME)
+                    .type(EntityType.GLOW_ITEM_FRAME)
+                    // Geyser has already registered item frames; build(false) skips its registries and
+                    // replaceJavaDefinition swaps this one in
+                    .bedrockDefinition(VanillaEntities.GLOW_ITEM_FRAME.defaultBedrockDefinition())
+                    .build(false));
+            logger().info("Item frames draw furniture in invisible frames");
         } catch (Throwable err) {
             logger().error("Error in load", err);
         }
@@ -133,6 +166,7 @@ public class GeyserDisplayEntity implements Extension {
                 .permission("geyserdisplayentity.commands.reload")
                 .executor((source, command, args) -> {
                     configManager.load();
+                    loadDisplayTransforms();
                     refreshDisplays();
                     source.sendMessage(configManager.getLang().getString("commands.geyserdisplayentity.reload.successfully-reloaded"));
                 })
@@ -188,6 +222,10 @@ public class GeyserDisplayEntity implements Extension {
 
     private void loadManagers() {
         this.configManager = new ConfigManager(this);
+    }
+
+    public static BedrockEntityDefinition itemDisplayDefinition() {
+        return ITEM_DISPLAY_BEDROCK;
     }
 
     public static GeyserDisplayEntity getExtension() {

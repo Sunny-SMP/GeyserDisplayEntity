@@ -55,6 +55,18 @@ python3 tools/build_pack.py
 ```
 The textures are written to `pack/textures/geyser_display/` and aren't committed.
 
+### Furniture in item frames
+Furniture is often placed as a custom item in an item frame, usually an invisible one, or a visible one the model covers. Java draws the item's 3D model with its `fixed` display transform (that's what makes a coffin lie open on the floor). Geyser turns every item frame into a Bedrock frame block, which always shows the frame and can only draw a flat icon.
+
+`FurnitureFrameEntity` replaces Geyser's item frame for item frames and glow item frames. Frames keep Geyser's behaviour, except a frame holding a custom item whose `item_model` is listed in `display_transforms.json`:
+- The frame block is replaced by air for an invisible frame, and by an empty frame for a visible one, as Java draws the frame behind the item.
+- The item is drawn on a `geyser:item_display` under the frame's own entity id, as a chest-slot attachable like custom items on item displays. Hitting it reaches the Java frame.
+- Its position, yaw and scale follow Java's `ItemFrameRenderer`: the frame's facing (horizontal frames turn by `180 - yaw`, floor and ceiling frames tilt by -90/+90 then turn half), the item rotation in 45 degree steps, the item's offset from the frame (0.5 blocks in invisible frames, 0.4375 in visible ones), the frame's half scale, then the item's `fixed` translation, rotation and scale.
+
+Bedrock can only scale an entity evenly and turn it about the vertical axis, so this applies when the result is upright and evenly scaled, like furniture in floor frames. Anything else (furniture tilted in a wall frame, for example) keeps Geyser's frame block.
+
+`display_transforms.json` is written by the Bedrock converter next to `custom_item_mappings.json`: the `fixed` transform of every custom item model, by `item_model` id. Copy it into the extension's folder (`extensions/geyserdisplayentity/display_transforms.json`); it's read on startup and on `/reload`. Without it, frames behave as in Geyser.
+
 ### Mappings
 - A mapping can match the Java `item_model` component with `item-model: "namespace:path"`. Unlike `item-identifier`, it stays the same when the Bedrock pack is rebuilt and the converter generates new Bedrock identifiers.
 
